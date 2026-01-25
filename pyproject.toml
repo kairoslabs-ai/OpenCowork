@@ -43,7 +43,6 @@ loguru = "^0.7.0"
 pyyaml = "^6.0"
 python-dotenv = "^1.0.0"
 # File & System Operations
-pathlib2 = "^2.3.0" ; sys_platform == "win32"
 aiofiles = "^23.0"
 # Docker
 docker = "^7.0.0"

@@ -1,0 +1,63 @@
+"""Default permissions configuration."""
+
+permissions:
+  folders:
+    - path: "."
+      access: "read_write"
+      description: "Current working directory"
+    - path: "/tmp"
+      access: "read_write"
+      description: "Temporary directory"
+
+  tools:
+    file_read:
+      enabled: true
+      rate_limit: null
+    
+    file_write:
+      enabled: true
+      rate_limit: null
+    
+    file_list:
+      enabled: true
+      rate_limit: null
+    
+    file_move:
+      enabled: true
+      rate_limit: "10 per minute"
+    
+    file_delete:
+      enabled: true
+      require_confirmation: true
+      rate_limit: "3 per minute"
+    
+    text_search:
+      enabled: true
+      rate_limit: null
+    
+    text_replace:
+      enabled: true
+      require_confirmation: true
+      rate_limit: null
+    
+    ask_human:
+      enabled: true
+      rate_limit: null
+    
+    run_command:
+      enabled: false
+      require_confirmation: true
+      rate_limit: "1 per minute"
+      allowed_commands:
+        - "python*"
+        - "npm*"
+        - "node*"
+      denied_commands:
+        - "rm -rf"
+        - "sudo*"
+
+  limits:
+    max_task_tokens: 100000
+    max_execution_time: 3600
+    max_concurrent_tools: 3
+    max_file_size_mb: 100

@@ -1,63 +1,64 @@
-"""Default permissions configuration."""
+# OpenCowork Permission Policy
+# This file defines access control rules for the agent
 
-permissions:
-  folders:
-    - path: "."
-      access: "read_write"
-      description: "Current working directory"
-    - path: "/tmp"
-      access: "read_write"
-      description: "Temporary directory"
+# Folder access policies
+folders:
+  # Current directory - read and write access
+  - path: "."
+    access: "read_write"
+    allow_delete: false
+    require_confirmation: true
 
-  tools:
-    file_read:
-      enabled: true
-      rate_limit: null
-    
-    file_write:
-      enabled: true
-      rate_limit: null
-    
-    file_list:
-      enabled: true
-      rate_limit: null
-    
-    file_move:
-      enabled: true
-      rate_limit: "10 per minute"
-    
-    file_delete:
-      enabled: true
-      require_confirmation: true
-      rate_limit: "3 per minute"
-    
-    text_search:
-      enabled: true
-      rate_limit: null
-    
-    text_replace:
-      enabled: true
-      require_confirmation: true
-      rate_limit: null
-    
-    ask_human:
-      enabled: true
-      rate_limit: null
-    
-    run_command:
-      enabled: false
-      require_confirmation: true
-      rate_limit: "1 per minute"
-      allowed_commands:
-        - "python*"
-        - "npm*"
-        - "node*"
-      denied_commands:
-        - "rm -rf"
-        - "sudo*"
+  # Temp directory - full access
+  - path: "/tmp"
+    access: "read_write"
+    allow_delete: true
+    require_confirmation: false
 
-  limits:
-    max_task_tokens: 100000
-    max_execution_time: 3600
-    max_concurrent_tools: 3
-    max_file_size_mb: 100
+# Tool policies
+tools:
+  # File operations
+  file_read:
+    enabled: true
+    require_confirmation: false
+
+  file_write:
+    enabled: true
+    require_confirmation: true
+
+  file_delete:
+    enabled: true
+    require_confirmation: true
+
+  file_list:
+    enabled: true
+    require_confirmation: false
+
+  file_move:
+    enabled: true
+    require_confirmation: false
+
+  text_search:
+    enabled: true
+    require_confirmation: false
+
+  text_replace:
+    enabled: true
+    require_confirmation: true
+
+  # System commands
+  run_command:
+    enabled: false
+    require_confirmation: true
+
+  # Human interaction
+  ask_human:
+    enabled: true
+    require_confirmation: false
+
+# Resource limits
+max_tokens_per_task: 100000
+max_execution_time_seconds: 3600
+
+# Network access
+allow_network: false

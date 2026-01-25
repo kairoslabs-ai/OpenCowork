@@ -1,0 +1,37 @@
+# Docker Compose for OpenCowork development
+
+version: '3.8'
+
+services:
+  opencowork:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: opencowork_backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - opencowork_cache:/app/.cache
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=INFO
+    command: poetry run python -m uvicorn opencowork.api:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - opencowork_network
+
+  sandbox:
+    image: ubuntu:22.04
+    container_name: opencowork_sandbox
+    volumes:
+      - /tmp:/workspace
+    networks:
+      - opencowork_network
+    entrypoint: /bin/bash
+
+volumes:
+  opencowork_cache:
+
+networks:
+  opencowork_network:
+    driver: bridge

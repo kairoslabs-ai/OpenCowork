@@ -2,6 +2,100 @@
 @import 'tailwindcss/components';
 @import 'tailwindcss/utilities';
 
+/* OpenCowork Design System - Warm, Professional Aesthetic */
+@layer base {
+  :root {
+    --background: 40 33% 96%;
+    --foreground: 20 14% 20%;
+
+    --card: 40 40% 98%;
+    --card-foreground: 20 14% 20%;
+
+    --popover: 40 40% 98%;
+    --popover-foreground: 20 14% 20%;
+
+    --primary: 350 45% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 40 25% 92%;
+    --secondary-foreground: 20 14% 25%;
+
+    --muted: 40 20% 90%;
+    --muted-foreground: 20 10% 45%;
+
+    --accent: 350 35% 92%;
+    --accent-foreground: 350 45% 40%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 40 20% 88%;
+    --input: 40 20% 88%;
+    --ring: 350 45% 55%;
+
+    --radius: 0.75rem;
+
+    /* Custom OpenCowork tokens */
+    --success: 142 70% 45%;
+    --success-foreground: 0 0% 100%;
+    --surface-elevated: 40 45% 99%;
+    --surface-sunken: 40 25% 94%;
+
+    --sidebar-background: 40 45% 99%;
+    --sidebar-foreground: 20 14% 25%;
+    --sidebar-primary: 350 45% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 30% 95%;
+    --sidebar-accent-foreground: 20 14% 25%;
+    --sidebar-border: 40 20% 90%;
+    --sidebar-ring: 350 45% 55%;
+  }
+
+  .dark {
+    --background: 20 14% 10%;
+    --foreground: 40 20% 95%;
+
+    --card: 20 14% 12%;
+    --card-foreground: 40 20% 95%;
+
+    --popover: 20 14% 12%;
+    --popover-foreground: 40 20% 95%;
+
+    --primary: 350 50% 60%;
+    --primary-foreground: 20 14% 10%;
+
+    --secondary: 20 14% 18%;
+    --secondary-foreground: 40 20% 90%;
+
+    --muted: 20 14% 20%;
+    --muted-foreground: 40 15% 60%;
+
+    --accent: 350 30% 20%;
+    --accent-foreground: 350 50% 70%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 20 14% 20%;
+    --input: 20 14% 20%;
+    --ring: 350 50% 60%;
+
+    --success: 142 60% 50%;
+    --success-foreground: 20 14% 10%;
+    --surface-elevated: 20 14% 14%;
+    --surface-sunken: 20 14% 8%;
+
+    --sidebar-background: 20 14% 12%;
+    --sidebar-foreground: 40 20% 90%;
+    --sidebar-primary: 350 50% 60%;
+    --sidebar-primary-foreground: 20 14% 10%;
+    --sidebar-accent: 20 14% 18%;
+    --sidebar-accent-foreground: 40 20% 90%;
+    --sidebar-border: 20 14% 20%;
+    --sidebar-ring: 350 50% 60%;
+  }
+}
+
 /* Custom animations */
 @keyframes slide-in {
   from {
@@ -51,27 +145,27 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: hsl(var(--background));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: hsl(var(--muted));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: hsl(var(--muted-foreground));
 }
 
 /* Selection color */
 ::selection {
-  background-color: #3b82f6;
-  color: white;
+  background-color: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 /* Focus states */
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid hsl(var(--ring));
   outline-offset: 2px;
 }
 

@@ -33,9 +33,9 @@ class PlanResponse(BaseModel):
     task_id: str
     goal: str
     steps: List[StepResponse]
-    estimated_tokens: int
-    estimated_duration_min: int
-    created_at: str
+    estimated_tokens: int = 0
+    estimated_duration_min: int = 0
+    created_at: str = ""
 
 
 class ExecutionStatusResponse(BaseModel):
@@ -43,12 +43,12 @@ class ExecutionStatusResponse(BaseModel):
 
     task_id: str
     status: str
-    current_step: int
-    total_steps: int
-    completed_steps: int
-    failed_steps: int
-    progress_percent: float
-    elapsed_ms: float
+    current_step: int = 0
+    total_steps: int = 0
+    completed_steps: int = 0
+    failed_steps: int = 0
+    progress_percent: float = 0.0
+    elapsed_ms: float = 0.0
 
 
 class ExecutionResponse(BaseModel):
@@ -56,12 +56,14 @@ class ExecutionResponse(BaseModel):
 
     task_id: str
     status: str
-    plan: PlanResponse
-    steps_executed: List[StepResponse]
-    errors: List[str]
-    summary: str
-    duration_ms: float
-    completed_at: str
+    plan: Optional[PlanResponse] = None
+    steps_executed: List[StepResponse] = []
+    errors: List[str] = []
+    summary: str = ""
+    duration_ms: float = 0.0
+    completed_at: str = ""
+    result: Optional[str] = None  # Fallback field
+    error: Optional[str] = None   # Fallback field
 
 
 class ConfirmationRequest(BaseModel):

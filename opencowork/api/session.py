@@ -32,7 +32,7 @@ class TaskSession:
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.plan: Optional[Plan] = None
-        self.status: ExecutionStatus = ExecutionStatus.NOT_STARTED
+        self.status: ExecutionStatus = ExecutionStatus.PENDING
         self.result: Optional[str] = None
         self.error: Optional[str] = None
         self.metadata: Dict = {}

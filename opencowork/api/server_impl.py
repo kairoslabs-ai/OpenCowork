@@ -62,8 +62,8 @@ class OpenCoworkAPI:
         logger.info(f"Creating plan for task {session.task_id}: {request.goal}")
 
         try:
-            # Use planner to create plan
-            plan = self.planner.plan(goal=request.goal, available_tools=[])
+            # Use planner to create plan (await async call)
+            plan = await self.planner.plan(goal=request.goal)
 
             # Store plan in session
             self.session_manager.update_session(session.task_id, plan=plan)
@@ -73,13 +73,19 @@ class OpenCoworkAPI:
                 goal=request.goal,
                 steps=[
                     models.StepResponse(
-                        id=step.id,
-                        tool=step.tool,
+                        step=step.step,
                         action=step.action,
-                        parameters=step.parameters,
+                        description=step.description,
+                        arguments=step.arguments,
+                        status=step.status.value,
+                        result=step.result,
+                        error=step.error,
                     )
                     for step in plan.steps
                 ],
+                estimated_tokens=plan.estimated_tokens or 0,
+                estimated_duration_min=plan.estimated_duration_min or 0,
+                created_at=plan.created_at.isoformat(),
             )
         except Exception as e:
             logger.error(f"Failed to create plan: {e}")
@@ -114,13 +120,19 @@ class OpenCoworkAPI:
             goal=session.goal,
             steps=[
                 models.StepResponse(
-                    id=step.id,
-                    tool=step.tool,
+                    step=step.step,
                     action=step.action,
-                    parameters=step.parameters,
+                    description=step.description,
+                    arguments=step.arguments,
+                    status=step.status.value,
+                    result=step.result,
+                    error=step.error,
                 )
                 for step in session.plan.steps
             ],
+            estimated_tokens=session.plan.estimated_tokens or 0,
+            estimated_duration_min=session.plan.estimated_duration_min or 0,
+            created_at=session.plan.created_at.isoformat(),
         )
 
     async def execute_task(self, task_id: str) -> models.ExecutionStatusResponse:
@@ -139,7 +151,7 @@ class OpenCoworkAPI:
         if not session.plan:
             raise HTTPException(status_code=400, detail="No plan to execute")
 
-        if session.status != ExecutionStatus.NOT_STARTED:
+        if session.status != ExecutionStatus.PENDING:
             raise HTTPException(status_code=400, detail="Task already started")
 
         logger.info(f"Starting execution for task: {task_id}")
@@ -187,7 +199,7 @@ class OpenCoworkAPI:
         if not session:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        if session.status == ExecutionStatus.NOT_STARTED:
+        if session.status == ExecutionStatus.PENDING:
             raise HTTPException(
                 status_code=400, detail="Task has not been executed yet"
             )

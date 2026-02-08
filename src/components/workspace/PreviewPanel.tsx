@@ -1,13 +1,15 @@
-import { TrendingUp, TrendingDown, Minus, ExternalLink, Maximize2, FileText } from 'lucide-react';
+import { TrendingUp, TrendingDown, Minus, ExternalLink, Maximize2, FileText, Play } from 'lucide-react';
 import { Button } from '../common/Button';
 import type { Artifact } from './types';
 
 interface PreviewPanelProps {
   currentTask: any;
   artifacts: Artifact[];
+  plan?: any;
+  onExecute?: () => void;
 }
 
-export function PreviewPanel({ currentTask, artifacts }: PreviewPanelProps) {
+export function PreviewPanel({ currentTask, artifacts, plan, onExecute }: PreviewPanelProps) {
   if (!currentTask) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background">
@@ -27,13 +29,23 @@ export function PreviewPanel({ currentTask, artifacts }: PreviewPanelProps) {
             <FileText className="h-4 w-4 text-primary" />
           </div>
           <div>
-            <h3 className="font-medium text-foreground">{currentTask.title || 'Task'}</h3>
+            <h3 className="font-medium text-foreground">{currentTask.goal || currentTask.title || 'Task'}</h3>
             <p className="text-xs text-muted-foreground">
               {new Date(currentTask.created_at).toLocaleDateString()}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {(currentTask.status === 'not_started' || currentTask.status === 'running') && onExecute && (
+            <Button 
+              className="gap-2"
+              onClick={onExecute}
+              disabled={currentTask.status === 'running'}
+            >
+              <Play className="h-4 w-4" />
+              {currentTask.status === 'running' ? 'Running...' : 'Execute'}
+            </Button>
+          )}
           <Button variant="ghost" className="h-8 w-8">
             <ExternalLink className="h-4 w-4" />
           </Button>
@@ -64,12 +76,12 @@ export function PreviewPanel({ currentTask, artifacts }: PreviewPanelProps) {
           </div>
 
           {/* Metrics Grid */}
-          {currentTask.plan && (
+          {(plan || currentTask.plan) && (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <MetricCard label="Status" value={currentTask.status || 'pending'} />
+              <MetricCard label="Status" value={currentTask.status || 'not_started'} />
               <MetricCard
                 label="Steps"
-                value={`${currentTask.current_step || 0}/${currentTask.plan.steps?.length || 0}`}
+                value={`0/${(plan?.steps || currentTask.plan?.steps)?.length || 0}`}
               />
               <MetricCard label="Priority" value={currentTask.priority || 'medium'} />
               <MetricCard label="Created" value={new Date(currentTask.created_at).toLocaleDateString()} />
@@ -77,16 +89,27 @@ export function PreviewPanel({ currentTask, artifacts }: PreviewPanelProps) {
           )}
 
           {/* Plan Details */}
-          {currentTask.plan && (
+          {(plan || currentTask.plan) && (
             <div className="rounded-lg border border-border bg-card p-5 shadow-sm">
-              <h3 className="mb-4 font-semibold text-foreground">Plan: {currentTask.plan.title}</h3>
+              <h3 className="mb-4 font-semibold text-foreground">
+                Plan: {plan?.goal || currentTask.plan?.title || 'Task Plan'}
+              </h3>
               <div className="space-y-2">
-                {currentTask.plan.steps?.map((step: string, i: number) => (
+                {(plan?.steps || currentTask.plan?.steps)?.map((step: any, i: number) => (
                   <div key={i} className="flex items-start gap-3 pb-2">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-medium text-primary">
                       {i + 1}
                     </span>
-                    <span className="text-sm text-foreground">{step}</span>
+                    <div className="flex-1">
+                      <p className="text-sm text-foreground">
+                        {typeof step === 'string' ? step : step.action || step.tool}
+                      </p>
+                      {step.parameters && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {Object.entries(step.parameters).map(([k, v]) => `${k}: ${v}`).join(', ')}
+                        </p>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>

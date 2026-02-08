@@ -6,20 +6,21 @@ import type { Message } from './types';
 interface ChatPanelProps {
   messages: Message[];
   onSendMessage: (content: string) => void;
+  isLoading?: boolean;
 }
 
-export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
+export function ChatPanel({ messages, onSendMessage, isLoading }: ChatPanelProps) {
   const [input, setInput] = useState('');
 
   const handleSend = () => {
-    if (input.trim()) {
+    if (input.trim() && !isLoading) {
       onSendMessage(input.trim());
       setInput('');
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
       e.preventDefault();
       handleSend();
     }
@@ -70,10 +71,14 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
           />
           <Button
             onClick={handleSend}
-            disabled={!input.trim()}
+            disabled={!input.trim() || isLoading}
             className="h-10 w-10 shrink-0 rounded-lg"
           >
-            <Send className="h-4 w-4" />
+            {isLoading ? (
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>

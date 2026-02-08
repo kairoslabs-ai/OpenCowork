@@ -1,18 +1,41 @@
 import { useState, useCallback } from 'react';
 import { useTaskStore } from '../store/taskStore';
 import { apiClient } from '../services/api';
-import type { TaskRequest, UseTaskReturn } from '../types';
+import type { TaskRequest } from '../types';
 
 /**
  * useTask - Manages task creation, execution, and status
  */
-export function useTask(): UseTaskReturn {
+export function useTask() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const taskStore = useTaskStore();
   const currentTask = taskStore.currentTask;
   const status = currentTask?.status || 'not_started';
+
+  const getTasks = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await apiClient.listTasks(100, 0);
+      const tasks = response.tasks.map((t: any) => ({
+        task_id: t.task_id,
+        goal: t.goal,
+        description: t.description || '',
+        status: t.status as any,
+        created_at: t.created_at,
+        metadata: {},
+      }));
+      return tasks;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load tasks';
+      setError(message);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
   const createTask = useCallback(
     async (request: TaskRequest) => {
@@ -103,6 +126,7 @@ export function useTask(): UseTaskReturn {
     createTask,
     executeTask,
     cancelTask,
+    getTasks,
     isLoading,
     error,
   };

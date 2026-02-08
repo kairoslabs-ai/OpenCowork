@@ -250,6 +250,7 @@ export interface UseTaskReturn {
   createTask: (request: TaskRequest) => Promise<Task>;
   executeTask: (taskId: string) => Promise<void>;
   cancelTask: (taskId: string) => Promise<void>;
+  getTasks: () => Promise<Task[]>;
   isLoading: boolean;
   error: string | null;
 }

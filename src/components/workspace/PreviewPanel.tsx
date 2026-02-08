@@ -7,9 +7,10 @@ interface PreviewPanelProps {
   artifacts: Artifact[];
   plan?: any;
   onExecute?: () => void;
+  isExecuting?: boolean;
 }
 
-export function PreviewPanel({ currentTask, artifacts, plan, onExecute }: PreviewPanelProps) {
+export function PreviewPanel({ currentTask, artifacts, plan, onExecute, isExecuting = false }: PreviewPanelProps) {
   if (!currentTask) {
     return (
       <div className="flex h-full flex-col items-center justify-center bg-background">
@@ -36,14 +37,23 @@ export function PreviewPanel({ currentTask, artifacts, plan, onExecute }: Previe
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {(currentTask.status === 'not_started' || currentTask.status === 'running') && onExecute && (
+          {(currentTask.status === 'not_started' || currentTask.status === 'running' || currentTask.status === 'pending') && onExecute && (
             <Button 
               className="gap-2"
               onClick={onExecute}
-              disabled={currentTask.status === 'running'}
+              disabled={isExecuting || currentTask.status === 'running'}
             >
-              <Play className="h-4 w-4" />
-              {currentTask.status === 'running' ? 'Running...' : 'Execute'}
+              {isExecuting || currentTask.status === 'running' ? (
+                <>
+                  <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Running...
+                </>
+              ) : (
+                <>
+                  <Play className="h-4 w-4" />
+                  Execute
+                </>
+              )}
             </Button>
           )}
           <Button variant="ghost" className="h-8 w-8">

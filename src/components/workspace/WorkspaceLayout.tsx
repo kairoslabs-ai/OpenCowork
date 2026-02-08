@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
-import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight } from 'lucide-react';
+import { PanelLeftClose, PanelRightClose, PanelLeft, PanelRight, AlertCircle } from 'lucide-react';
 import { Button } from '../common/Button';
+import { ConfirmationDialog } from '../common/ConfirmationDialog';
 import { ChatPanel } from './ChatPanel';
 import { PreviewPanel } from './PreviewPanel';
 import { ProgressSidebar } from './ProgressSidebar';
 import { useTask } from '../../hooks/useTask';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { useTaskConfirmation } from '../../hooks/useTaskConfirmation';
 import { apiClient } from '../../services/api';
 import type { Message, ProgressStep, Artifact } from './types';
 
@@ -18,8 +21,31 @@ export function WorkspaceLayout() {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [plan, setPlan] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isExecuting, setIsExecuting] = useState(false);
 
   const { getTasks, createTask } = useTask();
+  const confirmation = useTaskConfirmation();
+  
+  // WebSocket for real-time updates
+  const { isConnected: wsConnected, lastMessage } = useWebSocket({
+    taskId: currentTask?.task_id,
+    enabled: !!currentTask?.task_id,
+    onMessage: (message) => {
+      // Handle real-time messages
+      if (message.type === 'task_status') {
+        handleStatusUpdate(message.data);
+      } else if (message.type === 'confirmation_required') {
+        handleConfirmationRequired(message.data);
+      } else if (message.type === 'task_completed') {
+        handleTaskCompleted(message.data);
+      }
+    },
+    onError: (error) => {
+      console.error('WebSocket error:', error);
+      setError(error.message);
+    },
+  });
 
   // Load initial tasks on mount
   useEffect(() => {
@@ -162,62 +188,129 @@ export function WorkspaceLayout() {
     }
   };
 
+  // Handle real-time status updates from WebSocket
+  const handleStatusUpdate = (data: any) => {
+    // Update current task status
+    setCurrentTask((prev: any) => ({
+      ...prev,
+      status: data.status || 'running',
+    }));
+
+    // Update progress steps based on current step
+    if (data.current_step !== undefined) {
+      setProgressSteps((prev) =>
+        prev.map((step, idx) => ({
+          ...step,
+          completed: idx < data.current_step,
+        }))
+      );
+    }
+
+    // Add status message to chat if significant change
+    if (data.status === 'running') {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          role: 'assistant',
+          content: `Executing step ${data.current_step + 1} of ${data.total_steps}: ${data.step_name || 'Processing...'}`,
+          timestamp: new Date(),
+        },
+      ]);
+    }
+  };
+
+  // Handle confirmation requests from backend
+  const handleConfirmationRequired = (data: any) => {
+    confirmation.openConfirmation(
+      currentTask?.task_id,
+      data.message || 'Please confirm this action',
+      data.is_dangerous || false
+    );
+  };
+
+  // Handle task completion
+  const handleTaskCompleted = (data: any) => {
+    setIsExecuting(false);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: `Task completed: ${data.result || data.error || 'Done'}`,
+        timestamp: new Date(),
+      },
+    ]);
+
+    // Update task status
+    setCurrentTask((prev: any) => ({
+      ...prev,
+      status: data.status || 'completed',
+    }));
+  };
+
   const handleExecuteTask = async () => {
     if (!currentTask) return;
 
     try {
+      setIsExecuting(true);
+      setError(null);
+
+      // Add execution start message
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: 'assistant',
-          content: 'Starting task execution...',
+          content: 'Starting task execution with real-time updates...',
           timestamp: new Date(),
         },
       ]);
 
+      // Start execution
       await apiClient.executeTask(currentTask.task_id);
 
-      // Start polling for status
-      const pollInterval = setInterval(async () => {
-        try {
-          const status = await apiClient.getExecutionStatus(currentTask.task_id);
-          setCurrentTask((prev: any) => ({ ...prev, status: status.status }));
+      // WebSocket will handle real-time updates
+      // Fallback polling in case WebSocket fails
+      let pollInterval: NodeJS.Timeout | undefined;
+      
+      if (!wsConnected) {
+        console.warn('WebSocket not connected, using polling fallback');
+        pollInterval = setInterval(async () => {
+          try {
+            const status = await apiClient.getExecutionStatus(currentTask.task_id);
+            handleStatusUpdate(status);
 
-          if (status.status === 'completed' || status.status === 'failed') {
-            clearInterval(pollInterval);
-
-            // Fetch final result
-            try {
+            if (
+              status.status === 'completed' ||
+              status.status === 'failed' ||
+              status.status === 'cancelled'
+            ) {
+              clearInterval(pollInterval);
               const result = await apiClient.getExecutionResult(currentTask.task_id);
-              setMessages((prev) => [
-                ...prev,
-                {
-                  id: Date.now().toString(),
-                  role: 'assistant',
-                  content: `Task ${status.status}: ${result.result || result.error}`,
-                  timestamp: new Date(),
-                },
-              ]);
-            } catch (err) {
-              console.error('Failed to fetch result:', err);
+              handleTaskCompleted(result);
             }
+          } catch (err) {
+            console.error('Polling error:', err);
+            if (pollInterval) clearInterval(pollInterval);
           }
-        } catch (err) {
-          console.error('Failed to check status:', err);
-          clearInterval(pollInterval);
-        }
-      }, 2000);
+        }, 2000);
 
-      // Clear interval after 5 minutes
-      setTimeout(() => clearInterval(pollInterval), 300000);
+        // Clean up polling after 5 minutes
+        setTimeout(() => {
+          if (pollInterval) clearInterval(pollInterval);
+        }, 300000);
+      }
     } catch (err) {
+      setIsExecuting(false);
+      const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+      setError(errorMsg);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           role: 'assistant',
-          content: `Execution error: ${err instanceof Error ? err.message : 'Unknown error'}`,
+          content: `Execution error: ${errorMsg}`,
           timestamp: new Date(),
         },
       ]);
@@ -245,66 +338,99 @@ export function WorkspaceLayout() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-background">
-      {/* Left Panel - Chat */}
-      <div className={panelClassName(leftPanelOpen, 'w-[380px]')}>
-        {leftPanelOpen && (
-          <ChatPanel 
-            messages={messages} 
-            onSendMessage={handleSendMessage}
-            isLoading={isCreatingTask}
-          />
-        )}
-      </div>
-
-      {/* Center Panel - Preview */}
-      <div className="relative flex flex-1 flex-col">
-        {/* Toggle Buttons */}
-        <div className="absolute left-2 top-2 z-10 flex gap-1">
-          <Button
-            variant="ghost"
-            className="h-8 w-8 bg-card/80 backdrop-blur-sm hover:bg-card"
-            onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+    <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
+      {/* Error Banner */}
+      {error && (
+        <div className="flex items-center gap-3 bg-red-50 px-4 py-3 text-sm text-red-900 border-b border-red-200">
+          <AlertCircle className="h-5 w-5 flex-shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-700 hover:text-red-900"
           >
-            {leftPanelOpen ? (
-              <PanelLeftClose className="h-4 w-4" />
-            ) : (
-              <PanelLeft className="h-4 w-4" />
-            )}
-          </Button>
+            ✕
+          </button>
         </div>
-        <div className="absolute right-2 top-2 z-10 flex gap-1">
-          <Button
-            variant="ghost"
-            className="h-8 w-8 bg-card/80 backdrop-blur-sm hover:bg-card"
-            onClick={() => setRightPanelOpen(!rightPanelOpen)}
-          >
-            {rightPanelOpen ? (
-              <PanelRightClose className="h-4 w-4" />
-            ) : (
-              <PanelRight className="h-4 w-4" />
-            )}
-          </Button>
+      )}
+
+      {/* Main Content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left Panel - Chat */}
+        <div className={panelClassName(leftPanelOpen, 'w-[380px]')}>
+          {leftPanelOpen && (
+            <ChatPanel 
+              messages={messages} 
+              onSendMessage={handleSendMessage}
+              isLoading={isCreatingTask || isExecuting}
+            />
+          )}
         </div>
 
-        <PreviewPanel 
-          currentTask={currentTask} 
-          artifacts={artifacts}
-          plan={plan}
-          onExecute={handleExecuteTask}
-        />
-      </div>
+        {/* Center Panel - Preview */}
+        <div className="relative flex flex-1 flex-col">
+          {/* Toggle Buttons */}
+          <div className="absolute left-2 top-2 z-10 flex gap-1">
+            <Button
+              variant="ghost"
+              className="h-8 w-8 bg-card/80 backdrop-blur-sm hover:bg-card"
+              onClick={() => setLeftPanelOpen(!leftPanelOpen)}
+            >
+              {leftPanelOpen ? (
+                <PanelLeftClose className="h-4 w-4" />
+              ) : (
+                <PanelLeft className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <div className="absolute right-2 top-2 z-10 flex gap-1">
+            <Button
+              variant="ghost"
+              className="h-8 w-8 bg-card/80 backdrop-blur-sm hover:bg-card"
+              onClick={() => setRightPanelOpen(!rightPanelOpen)}
+            >
+              {rightPanelOpen ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRight className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
 
-      {/* Right Panel - Progress */}
-      <div className={panelClassName(rightPanelOpen, 'w-[300px]')}>
-        {rightPanelOpen && (
-          <ProgressSidebar
-            progressSteps={progressSteps}
+          <PreviewPanel 
+            currentTask={currentTask} 
             artifacts={artifacts}
-            onArtifactClick={handleArtifactClick}
+            plan={plan}
+            onExecute={handleExecuteTask}
+            isExecuting={isExecuting}
           />
-        )}
+        </div>
+
+        {/* Right Panel - Progress */}
+        <div className={panelClassName(rightPanelOpen, 'w-[300px]')}>
+          {rightPanelOpen && (
+            <ProgressSidebar
+              progressSteps={progressSteps}
+              artifacts={artifacts}
+              onArtifactClick={handleArtifactClick}
+            />
+          )}
+        </div>
       </div>
+
+      {/* Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmation.isOpen}
+        title="Confirmation Required"
+        message={confirmation.pending?.message || 'Please confirm this action'}
+        isDangerous={confirmation.pending?.isDangerous}
+        isLoading={confirmation.isSubmitting}
+        confirmLabel="Confirm"
+        cancelLabel="Cancel"
+        onConfirm={() => confirmation.submit(true)}
+        onCancel={() => {
+          confirmation.submit(false);
+        }}
+      />
     </div>
   );
 }

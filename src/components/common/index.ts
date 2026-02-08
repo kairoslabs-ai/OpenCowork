@@ -9,3 +9,4 @@ export { Modal } from './Modal';
 export { Toast } from './Toast';
 export { Progress } from './Progress';
 export { ErrorBoundary } from './ErrorBoundary';
+export { ConfirmationDialog } from './ConfirmationDialog';

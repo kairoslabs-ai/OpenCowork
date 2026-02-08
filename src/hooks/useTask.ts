@@ -120,12 +120,46 @@ export function useTask() {
     [currentTask, taskStore]
   );
 
+  const confirmTask = useCallback(
+    async (taskId: string, confirmed: boolean) => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        await apiClient.confirmAction(taskId, {
+          task_id: taskId,
+          action: 'confirm',
+          confirmed: confirmed,
+        });
+
+        // Update task or fetch fresh status
+        if (currentTask && currentTask.task_id === taskId) {
+          // Re-fetch task status after confirmation
+          const tasks = await getTasks();
+          const updated = tasks?.find((t: any) => t.task_id === taskId);
+          if (updated) {
+            taskStore.updateTask(updated);
+            taskStore.setCurrentTask(updated);
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to confirm task';
+        setError(message);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [currentTask, taskStore, getTasks]
+  );
+
   return {
     task: currentTask || null,
     status,
     createTask,
     executeTask,
     cancelTask,
+    confirmTask,
     getTasks,
     isLoading,
     error,

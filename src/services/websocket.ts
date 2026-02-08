@@ -137,6 +137,16 @@ export class WebSocketClient {
   }
 
   /**
+   * Subscribe to a specific event type (alias for subscribe)
+   */
+  on(
+    eventType: WebSocketEventType,
+    callback: WebSocketEventHandler
+  ): () => void {
+    return this.subscribe(eventType, callback);
+  }
+
+  /**
    * Subscribe to a specific event type
    */
   subscribe(

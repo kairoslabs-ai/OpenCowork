@@ -437,3 +437,30 @@ export interface WebSocketConfig {
   reconnectAttempts?: number;
   reconnectDelay?: number;
 }
+
+// ============================================================================
+// WebSocket Types
+// ============================================================================
+
+export type WebSocketEventType =
+  | 'task_status'
+  | 'task_completed'
+  | 'task_failed'
+  | 'confirmation_required'
+  | 'error'
+  | 'connected'
+  | 'disconnected';
+
+export type WebSocketStatus = 'connected' | 'disconnected' | 'connecting' | 'error';
+
+export interface WebSocketMessage {
+  type: WebSocketEventType;
+  data: unknown;
+  timestamp: string;
+}
+
+export interface WebSocketEvent {
+  type: string;
+  data: unknown;
+}
+

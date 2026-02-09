@@ -2,9 +2,11 @@
 
 import json
 import logging
+import os
 from typing import Any, Dict, List, Optional
 
-from opencowork.core import Plan, Step
+from opencowork.agent.llm_service import LLMService
+from opencowork.core import Plan, Step, StepStatus
 from opencowork.tools import FILESYSTEM_TOOLS, ToolSchema
 
 logger = logging.getLogger(__name__)
@@ -20,22 +22,49 @@ class Planner:
 
     def __init__(
         self,
-        model_provider: str = "openrouter",
-        model_name: str = "meta-llama/llama-3.1-70b-instruct",
+        llm_provider: str = "ollama",
+        llm_model: str = "mistral",
+        api_key: Optional[str] = None,
         tools: Optional[Dict[str, Any]] = None,
+        use_llm: bool = True,
     ):
         """
         Initialize the Planner.
 
         Args:
-            model_provider: LLM provider (openrouter, ollama, etc.)
-            model_name: Model name/ID to use
+            llm_provider: LLM provider (openai, anthropic, ollama)
+            llm_model: Model name/ID to use
+            api_key: API key for provider (if needed)
             tools: Dict of available tools {name: tool_class}
+            use_llm: Whether to use LLM or demo planner
         """
-        self.model_provider = model_provider
-        self.model_name = model_name
+        self.model_provider = llm_provider
+        self.model_name = llm_model
         self.tools = tools or self._load_default_tools()
-        logger.info(f"Initialized Planner with {model_provider}:{model_name}")
+        self.use_llm = use_llm
+
+        # Initialize LLM service if enabled
+        self.llm_service = None
+        if use_llm:
+            try:
+                # Get API key from environment if not provided
+                if not api_key:
+                    if llm_provider == "openai":
+                        api_key = os.getenv("OPENAI_API_KEY")
+                    elif llm_provider == "anthropic":
+                        api_key = os.getenv("ANTHROPIC_API_KEY")
+
+                self.llm_service = LLMService(
+                    provider_type=llm_provider,
+                    api_key=api_key,
+                    model=llm_model,
+                )
+                logger.info(f"Initialized LLM Planner with {llm_provider}:{llm_model}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LLM service: {e}. Falling back to demo planner.")
+                self.llm_service = None
+                self.use_llm = False
+
         logger.info(f"Loaded {len(self.tools)} tools")
 
     def _load_default_tools(self) -> Dict[str, Any]:
@@ -83,14 +112,47 @@ class Planner:
         if context is None:
             context = {}
 
-        # Get available tools and their schemas
+        # Try LLM-based planning first
+        if self.llm_service and self.use_llm:
+            try:
+                tool_schemas = self._get_tool_schemas()
+                plan_data = await self.llm_service.generate_plan(goal, tool_schemas, context)
+
+                # Convert LLM response to Plan object
+                plan = self._parse_llm_plan(plan_data)
+                logger.info(f"Generated LLM plan with {len(plan.steps)} steps")
+                return plan
+
+            except Exception as e:
+                logger.warning(f"LLM planning failed: {e}. Falling back to demo plan.")
+
+        # Fallback to demo plan
         tool_schemas = self._get_tool_schemas()
-
-        # TODO: Call LLM with goal and tool schemas to generate plan
-        # For now, return a simple demo plan
         plan = self._generate_demo_plan(goal, tool_schemas)
+        logger.info(f"Generated demo plan with {len(plan.steps)} steps")
+        return plan
 
-        logger.info(f"Generated plan with {len(plan.steps)} steps")
+    def _parse_llm_plan(self, plan_data: Dict[str, Any]) -> Plan:
+        """Parse LLM response into Plan object"""
+        steps = []
+        for step_data in plan_data.get("steps", []):
+            step = Step(
+                step=step_data.get("step", len(steps) + 1),
+                action=step_data.get("action", "unknown"),
+                description=step_data.get("description", ""),
+                arguments=step_data.get("arguments", {}),
+                status=StepStatus.PENDING,
+            )
+            steps.append(step)
+
+        plan = Plan(
+            goal=plan_data.get("goal", ""),
+            steps=steps,
+            summary=plan_data.get("summary", ""),
+            estimated_tokens=plan_data.get("estimated_tokens", 5000),
+            estimated_duration_min=plan_data.get("estimated_duration_min", 10),
+        )
+
         return plan
 
     def _generate_demo_plan(self, goal: str, tool_schemas: List[Dict[str, Any]]) -> Plan:

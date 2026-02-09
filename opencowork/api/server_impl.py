@@ -1,19 +1,25 @@
 """OpenCowork API server implementation with integrated endpoints."""
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
 
 from opencowork.agent.executor import Executor
 from opencowork.agent.planner import Planner
+from opencowork.agent.llm_service import LLMService
 from opencowork.api import models
 from opencowork.api.session import TaskSessionManager
 from opencowork.core import ExecutionStatus
+from opencowork.database import Database, init_database, get_database, get_session
+from opencowork.database.models import SkillRepository, TaskRepository
 from opencowork.sandbox.permissions import PermissionManager
+from opencowork.skills.manager import SkillRecorder, SkillExecutor
+from opencowork.logging.execution_logger import ExecutionLogger
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +31,60 @@ class OpenCoworkAPI:
         self,
         session_storage: Optional[Path] = None,
         permission_policy_path: Optional[Path] = None,
+        database_url: Optional[str] = None,
+        use_llm: bool = True,
+        llm_provider: str = "openai",
+        llm_api_key: Optional[str] = None,
     ):
         """Initialize API.
 
         Args:
             session_storage: Path to store task sessions
             permission_policy_path: Path to permission policy file
+            database_url: Database URL (defaults to SQLite)
+            use_llm: Whether to enable LLM-based planning
+            llm_provider: LLM provider (openai, anthropic, ollama)
+            llm_api_key: API key for LLM provider
         """
         self.session_manager = TaskSessionManager(session_storage)
-        self.planner = Planner()
+        
+        # Initialize database
+        if database_url is None:
+            database_url = os.getenv("DATABASE_URL", "sqlite:///./opencowork.db")
+        
+        init_database(database_url)
+        self.database = get_database()
+        self.skill_repository = SkillRepository(get_session())
+        self.task_repository = TaskRepository(get_session())
+        
+        # Initialize LLM service if enabled
+        self.llm_service = None
+        if use_llm:
+            if llm_api_key is None:
+                llm_api_key = os.getenv(f"{llm_provider.upper()}_API_KEY")
+            
+            try:
+                self.llm_service = LLMService(
+                    provider_type=llm_provider,
+                    api_key=llm_api_key,
+                )
+                logger.info(f"LLM service initialized with provider: {llm_provider}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LLM service: {e}. Will use demo planning.")
+        
+        # Initialize planner with LLM support
+        self.planner = Planner(
+            llm_provider=llm_provider,
+            use_llm=use_llm,
+            api_key=llm_api_key,
+        )
+        
         self.executor = Executor()
         self.permission_manager = PermissionManager()
+
+        # Initialize skill management
+        self.skill_recorder = SkillRecorder()
+        self.skill_executor = SkillExecutor()
 
         # Load permission policy if exists
         if permission_policy_path and permission_policy_path.exists():
@@ -43,6 +92,7 @@ class OpenCoworkAPI:
 
         self._running_tasks = set()
         self._websocket_connections = {}
+        self._execution_loggers = {}
 
     async def create_plan(self, request: models.TaskRequest) -> models.PlanResponse:
         """Create a plan from a goal.
@@ -396,17 +446,32 @@ class OpenCoworkAPI:
         return {"updated": True}
 
 
-def create_app(api: Optional[OpenCoworkAPI] = None) -> FastAPI:
+def create_app(
+    api: Optional[OpenCoworkAPI] = None,
+    database_url: Optional[str] = None,
+    use_llm: bool = True,
+    llm_provider: str = "openai",
+    llm_api_key: Optional[str] = None,
+) -> FastAPI:
     """Create FastAPI application.
 
     Args:
         api: Optional OpenCoworkAPI instance
+        database_url: Database URL
+        use_llm: Whether to enable LLM planning
+        llm_provider: LLM provider name
+        llm_api_key: API key for LLM provider
 
     Returns:
         FastAPI app
     """
     if api is None:
-        api = OpenCoworkAPI()
+        api = OpenCoworkAPI(
+            database_url=database_url,
+            use_llm=use_llm,
+            llm_provider=llm_provider,
+            llm_api_key=llm_api_key,
+        )
 
     app = FastAPI(
         title="OpenCowork API",
@@ -514,6 +579,127 @@ def create_app(api: Optional[OpenCoworkAPI] = None) -> FastAPI:
     async def update_policy(request: models.PolicyResponse) -> dict:
         """Update policy."""
         return await api.update_policy(request)
+
+    # Skills Endpoints
+
+    @app.get("/api/skills")
+    async def list_skills() -> dict:
+        """List all available skills."""
+        try:
+            skills = api.skill_repository.list()
+            return {
+                "skills": [
+                    {
+                        "skill_id": s.skill_id,
+                        "name": s.name,
+                        "description": s.description,
+                        "category": s.category,
+                        "version": s.version,
+                        "execution_count": s.execution_count,
+                        "success_count": s.success_count,
+                        "avg_duration_sec": s.avg_duration_sec,
+                    }
+                    for s in skills
+                ],
+                "total": len(skills),
+            }
+        except Exception as e:
+            logger.error(f"Failed to list skills: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/skills/{skill_id}")
+    async def get_skill(skill_id: str) -> dict:
+        """Get skill details."""
+        try:
+            skill = api.skill_repository.get(skill_id)
+            if not skill:
+                raise HTTPException(status_code=404, detail="Skill not found")
+            
+            return {
+                "skill_id": skill.skill_id,
+                "name": skill.name,
+                "description": skill.description,
+                "category": skill.category,
+                "steps": skill.steps_json,
+                "version": skill.version,
+                "execution_count": skill.execution_count,
+                "success_count": skill.success_count,
+                "avg_duration_sec": skill.avg_duration_sec,
+                "created_at": skill.created_at.isoformat(),
+                "updated_at": skill.updated_at.isoformat(),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get skill: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/skills")
+    async def create_skill(request: dict) -> dict:
+        """Create a new skill from execution."""
+        try:
+            skill_name = request.get("name")
+            description = request.get("description", "")
+            category = request.get("category", "custom")
+            steps = request.get("steps", [])
+            
+            if not skill_name or not steps:
+                raise HTTPException(status_code=400, detail="Name and steps required")
+            
+            # Save skill to repository
+            skill = api.skill_recorder.record_skill(
+                name=skill_name,
+                description=description,
+                category=category,
+                steps=steps,
+            )
+            
+            logger.info(f"Skill created: {skill_name}")
+            
+            return {
+                "skill_id": skill.get("skill_id"),
+                "name": skill.get("name"),
+                "status": "created",
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to create skill: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.delete("/api/skills/{skill_id}")
+    async def delete_skill(skill_id: str) -> dict:
+        """Delete a skill."""
+        try:
+            api.skill_repository.delete(skill_id)
+            logger.info(f"Skill deleted: {skill_id}")
+            return {"deleted": True}
+        except Exception as e:
+            logger.error(f"Failed to delete skill: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # Execution Logging Endpoints
+
+    @app.get("/api/tasks/{task_id}/logs")
+    async def get_task_logs(task_id: str) -> dict:
+        """Get execution logs for a task."""
+        try:
+            if task_id not in api._execution_loggers:
+                raise HTTPException(status_code=404, detail="Task logs not found")
+            
+            logger_instance = api._execution_loggers[task_id]
+            logs = logger_instance.get_logs()
+            
+            return {
+                "task_id": task_id,
+                "logs": logs,
+                "total": len(logs),
+            }
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get logs: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
     # WebSocket Endpoint
 
